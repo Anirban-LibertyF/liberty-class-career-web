@@ -1,0 +1,40 @@
+# Environment and credentials
+.env
+.env.*
+!.env.example
+
+# Composer dependencies
+/vendor/
+
+# Runtime files
+/storage/logs/*
+!/storage/logs/.gitkeep
+
+/storage/uploads/profiles/*
+!/storage/uploads/profiles/.gitkeep
+
+/storage/uploads/questions/*
+!/storage/uploads/questions/.gitkeep
+
+/storage/exports/*
+!/storage/exports/.gitkeep
+
+# Database backups
+*.sql.gz
+*.sql.zip
+*.dump
+
+# IDE and operating system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+*.cache
+
+# Deployment artifacts
+/deployments/
+*.zip

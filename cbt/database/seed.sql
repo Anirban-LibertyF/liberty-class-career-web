@@ -1,0 +1,3 @@
+INSERT INTO subjects(name,slug) VALUES ('Physics','physics'),('Chemistry','chemistry'),('Mathematics','mathematics'),('Biology','biology'),('General Science','general-science'),('English','english'),('History','history'),('Geography','geography'),('Indian Polity','indian-polity'),('Economics','economics'),('General Knowledge','general-knowledge'),('Current Affairs','current-affairs'),('Reasoning','reasoning'),('Quantitative Aptitude','quantitative-aptitude'),('Computer Awareness','computer-awareness'),('Nursing','nursing'),('Anatomy and Physiology','anatomy-and-physiology'),('Environmental Science','environmental-science');
+-- Create the first admin and demo student with scripts/create-user.php so passwords are hashed locally.
+

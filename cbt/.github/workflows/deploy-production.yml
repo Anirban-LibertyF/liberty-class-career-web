@@ -1,0 +1,99 @@
+name: Test and deploy production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: liberty-cbt-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: pdo_mysql, mbstring, fileinfo, gd, json
+          coverage: none
+
+      - name: Validate Composer configuration
+        run: composer validate --no-check-publish
+
+      - name: Install production dependencies
+        run: composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+
+      - name: Run project checks
+        run: |
+          php tests/run.php
+          find app public scripts tests -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Build deployment archive
+        run: tar --exclude='.git' --exclude='.github' --exclude='.env' --exclude='storage' -czf "$RUNNER_TEMP/lcc-cbt-${GITHUB_SHA}.tar.gz" .
+
+      - name: Configure verified SSH connection
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 -p "$SSH_PORT" "$SSH_HOST" > ~/.ssh/known_hosts.scan
+          actual="$(ssh-keygen -lf ~/.ssh/known_hosts.scan -E sha256 | awk '{print $2}')"
+          test "$actual" = 'SHA256:nYCqBlmQEzqkwMF66EzhW+GteLNxK5kr3QDgDNcBlXY'
+          mv ~/.ssh/known_hosts.scan ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload release archive
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          APP_BASE_PATH: ${{ secrets.APP_BASE_PATH }}
+        run: |
+          scp -P "$SSH_PORT" "$RUNNER_TEMP/lcc-cbt-${GITHUB_SHA}.tar.gz" "$SSH_USER@$SSH_HOST:$APP_BASE_PATH/release-${GITHUB_SHA}.tar.gz"
+
+      - name: Activate release and migrate database
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          APP_BASE_PATH: ${{ secrets.APP_BASE_PATH }}
+          PUBLIC_PATH: ${{ secrets.PUBLIC_PATH }}
+        run: |
+          ssh -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "bash -s -- '$GITHUB_SHA' '$APP_BASE_PATH/release-${GITHUB_SHA}.tar.gz' '$APP_BASE_PATH' '$PUBLIC_PATH'" \
+            < scripts/deploy-remote.sh
+
+      - name: Verify production health
+        id: health
+        continue-on-error: true
+        env:
+          HEALTH_URL: ${{ secrets.HEALTH_URL }}
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 5 --max-time 20 "$HEALTH_URL"
+
+      - name: Roll back failed release
+        if: steps.health.outcome == 'failure'
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          APP_BASE_PATH: ${{ secrets.APP_BASE_PATH }}
+          PUBLIC_PATH: ${{ secrets.PUBLIC_PATH }}
+        run: |
+          ssh -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "bash -s -- '$APP_BASE_PATH' '$PUBLIC_PATH'" \
+            < scripts/rollback-remote.sh
+          exit 1

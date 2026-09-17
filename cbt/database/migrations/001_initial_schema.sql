@@ -1,0 +1,2 @@
+-- Initial schema marker.
+-- scripts/migrate.php imports database/schema.sql and database/seed.sql for this migration.

@@ -1,0 +1,83 @@
+﻿name: Deploy Masterjee
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Create release directory
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            -p "${{ secrets.SSH_PORT }}" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "mkdir -p /home/diabkloz/masterjee_app/releases/${{ github.sha }}"
+
+      - name: Upload project
+        run: |
+          rsync -az \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='config/config.php' \
+            -e "ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SSH_PORT }}" \
+            ./ \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/diabkloz/masterjee_app/releases/${{ github.sha }}/"
+
+      - name: Activate release
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            -p "${{ secrets.SSH_PORT }}" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            bash -s -- "${{ github.sha }}" <<'REMOTE_SCRIPT'
+
+          set -e
+
+          RELEASE_SHA="$1"
+          APP_ROOT="/home/diabkloz/masterjee_app"
+          WEB_ROOT="/home/diabkloz/masterjee.guru"
+          RELEASE="$APP_ROOT/releases/$RELEASE_SHA"
+
+          echo "Activating release: $RELEASE"
+
+          test -d "$RELEASE"
+          test -d "$RELEASE/config"
+          test -f "$APP_ROOT/shared/config.php"
+
+          rm -f "$RELEASE/config/config.php"
+          ln -s "$APP_ROOT/shared/config.php" "$RELEASE/config/config.php"
+
+          find "$WEB_ROOT" \
+            -mindepth 1 \
+            -maxdepth 1 \
+            ! -name ".well-known" \
+            -exec rm -rf {} +
+
+          cp -a "$RELEASE"/. "$WEB_ROOT"/
+
+          rm -f "$WEB_ROOT/config/config.php"
+          ln -s "$APP_ROOT/shared/config.php" "$WEB_ROOT/config/config.php"
+
+          ln -sfn "$RELEASE" "$APP_ROOT/current"
+
+          chmod -R u+rwX,go+rX "$WEB_ROOT"
+
+          cd "$APP_ROOT/releases"
+          ls -1dt */ 2>/dev/null | tail -n +6 | xargs -r rm -rf
+
+          echo "Masterjee deployment complete"
+          REMOTE_SCRIPT
