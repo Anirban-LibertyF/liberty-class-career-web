@@ -14,7 +14,38 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Check deploy secrets
+        id: deploy-secrets
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          missing=0
+
+          if [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "::warning::SSH_PRIVATE_KEY secret is not set; skipping deployment."
+            missing=1
+          fi
+
+          if [ -z "$SSH_HOST" ]; then
+            echo "::warning::SSH_HOST secret is not set; skipping deployment."
+            missing=1
+          fi
+
+          if [ -z "$SSH_USER" ]; then
+            echo "::warning::SSH_USER secret is not set; skipping deployment."
+            missing=1
+          fi
+
+          if [ "$missing" -eq 1 ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Setup SSH
+        if: steps.deploy-secrets.outputs.configured == 'true'
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -26,6 +57,7 @@ jobs:
           ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts
 
       - name: Create release directory
+        if: steps.deploy-secrets.outputs.configured == 'true'
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
@@ -37,6 +69,7 @@ jobs:
             "mkdir -p /home/diabkloz/masterjee_app/releases/${{ github.sha }}"
 
       - name: Upload project
+        if: steps.deploy-secrets.outputs.configured == 'true'
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
@@ -51,6 +84,7 @@ jobs:
             "$SSH_USER@$SSH_HOST:/home/diabkloz/masterjee_app/releases/${{ github.sha }}/"
 
       - name: Activate release
+        if: steps.deploy-secrets.outputs.configured == 'true'
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
