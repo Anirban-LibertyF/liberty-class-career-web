@@ -5,19 +5,130 @@ if($requestPath==='/cbt'||str_starts_with($requestPath,'/cbt/')){
     require __DIR__.'/cbt/public/index.php';
     exit;
 }
+require_once __DIR__.'/cbt/vendor/autoload.php';
+if (class_exists(Dotenv\Dotenv::class) && is_file(__DIR__ . '/.env')) {
+    Dotenv\Dotenv::createImmutable(__DIR__)->safeLoad();
+}
+ini_set('session.use_strict_mode', '1');
+ini_set('session.cookie_httponly', '1');
+ini_set('session.cookie_samesite', 'Lax');
+if (($_ENV['APP_ENV'] ?? 'production') === 'production') {
+    ini_set('session.cookie_secure', '1');
+}
+session_name($_ENV['SESSION_NAME'] ?? 'lcc_cbt_session');
 session_start();
+\App\Core\Auth::restoreRemembered();
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
+$studentUser = isset($_SESSION['user']) && ($_SESSION['user']['role'] ?? null) === 'student'
+    ? $_SESSION['user']
+    : null;
+$studentPhone = '';
+if ($studentUser && !empty($studentUser['id'])) {
+    try {
+        $phoneQuery = \App\Core\Database::connection()->prepare('SELECT phone FROM students WHERE id=? AND deleted_at IS NULL');
+        $phoneQuery->execute([(int) $studentUser['id']]);
+        $studentPhone = (string) ($phoneQuery->fetchColumn() ?: '');
+    } catch (Throwable $ignored) {}
+}
+$studentAvatar = $studentUser && !empty($studentUser['profile_photo'])
+    ? '/cbt/media/' . ltrim((string) $studentUser['profile_photo'], '/')
+    : '/assets/images/brand/default-student-avatar.webp';
+if (empty($_SESSION['_csrf'])) {
+    $_SESSION['_csrf'] = bin2hex(random_bytes(32));
+}
+$portalCssVersion = (string) (@filemtime(__DIR__ . '/assets/css/php-portal.css') ?: 1);
+$portalJsVersion = (string) (@filemtime(__DIR__ . '/assets/js/app.js') ?: 1);
+$homeLoginError = !$studentUser ? ($_SESSION['_flash']['error'] ?? null) : null;
+if ($homeLoginError !== null) {
+    unset($_SESSION['_flash']['error']);
+}
 
 $courses = [
-    ['image'=>'assets/images/courses/ai-machine-learning.svg','title'=>'AI & Machine Learning','cat'=>'Technology','weeks'=>24,'rating'=>'4.9','students'=>126,'color'=>'blue','icon'=>'AI'],
-    ['image'=>'assets/images/courses/web-development.svg','title'=>'Web Development','cat'=>'Development','weeks'=>24,'rating'=>'4.8','students'=>214,'color'=>'red','icon'=>'&lt;/&gt;'],
-    ['image'=>'assets/images/courses/share-trading.svg','title'=>'Share Trading','cat'=>'Finance','weeks'=>24,'rating'=>'4.7','students'=>98,'color'=>'gold','icon'=>'↗'],
-    ['image'=>'assets/images/courses/digital-marketing.svg','title'=>'Digital Marketing','cat'=>'Marketing','weeks'=>24,'rating'=>'4.8','students'=>184,'color'=>'red','icon'=>'DM'],
-    ['image'=>'assets/images/courses/content-creation.svg','title'=>'Content Creation & Editing','cat'=>'Creative','weeks'=>24,'rating'=>'4.7','students'=>142,'color'=>'gold','icon'=>'CC'],
-    ['image'=>'assets/images/courses/app-development.svg','title'=>'App Development','cat'=>'Development','weeks'=>24,'rating'=>'4.9','students'=>117,'color'=>'blue','icon'=>'APP'],
+    ['slug'=>'ai-machine-learning','image'=>'assets/images/courses/ai-machine-learning.svg','title'=>'AI & Machine Learning','cat'=>'Technology','weeks'=>24,'rating'=>'4.9','students'=>126,'color'=>'blue','icon'=>'AI','courseFee'=>1200,'videoFee'=>399,'materialFee'=>299],
+    ['slug'=>'web-development','image'=>'assets/images/courses/web-development.svg','title'=>'Web Development','cat'=>'Development','weeks'=>24,'rating'=>'4.8','students'=>214,'color'=>'red','icon'=>'&lt;/&gt;','courseFee'=>1200,'videoFee'=>399,'materialFee'=>299],
+    ['slug'=>'share-trading','image'=>'assets/images/courses/share-trading.svg','title'=>'Share Trading','cat'=>'Finance','weeks'=>24,'rating'=>'4.7','students'=>98,'color'=>'gold','icon'=>'↗','courseFee'=>1200,'videoFee'=>399,'materialFee'=>299],
+    ['slug'=>'digital-marketing','image'=>'assets/images/courses/digital-marketing.svg','title'=>'Digital Marketing','cat'=>'Marketing','weeks'=>24,'rating'=>'4.8','students'=>184,'color'=>'red','icon'=>'DM','courseFee'=>1200,'videoFee'=>399,'materialFee'=>299],
+    ['slug'=>'content-creation','image'=>'assets/images/courses/content-creation.svg','title'=>'Content Creation & Editing','cat'=>'Creative','weeks'=>24,'rating'=>'4.7','students'=>142,'color'=>'gold','icon'=>'CC','courseFee'=>1200,'videoFee'=>399,'materialFee'=>299],
+    ['slug'=>'app-web-development','image'=>'assets/images/courses/app-development.svg','title'=>'App Development','cat'=>'Development','weeks'=>24,'rating'=>'4.9','students'=>117,'color'=>'blue','icon'=>'APP','courseFee'=>1200,'videoFee'=>399,'materialFee'=>299],
 ];
+$fallbackCourses = $courses;
+
+function skill_key(string $value): string {
+    return strtolower((string) preg_replace('/[^a-z0-9]+/i', '', $value));
+}
+
+function admin_skill_courses(array $fallbackCourses): array {
+    $base = rtrim((string) ($_ENV['LCC_ADMIN_API_BASE_URL'] ?? getenv('LCC_ADMIN_API_BASE_URL') ?: ''), '/');
+    if ($base === '') return [];
+
+    $context = stream_context_create(['http' => [
+        'method' => 'GET',
+        'header' => "Accept: application/json\r\nConnection: close\r\n",
+        'timeout' => 2.5,
+        'ignore_errors' => true,
+    ]]);
+    $json = @file_get_contents($base . '/public_skills.php', false, $context);
+    if (!is_string($json) || $json === '') return [];
+    $payload = json_decode($json, true);
+    $rows = $payload['data']['skills'] ?? null;
+    if (($payload['status'] ?? '') !== 'success' || !is_array($rows) || !$rows) return [];
+
+    $defaults = [];
+    foreach ($fallbackCourses as $course) {
+        $defaults[(string) $course['slug']] = $course;
+        $defaults[skill_key((string) $course['title'])] = $course;
+    }
+    $aliases = [
+        'aiml' => 'aimachinelearning',
+        'appwebdevelopment' => 'appdevelopment',
+        'contentcreation' => 'contentcreationediting',
+    ];
+    $slugImages = [
+        'ai-machine-learning'=>'assets/images/courses/ai-machine-learning.svg','share-trading'=>'assets/images/courses/share-trading.svg',
+        'content-creation'=>'assets/images/courses/content-creation.svg','digital-marketing'=>'assets/images/courses/digital-marketing.svg',
+        'app-web-development'=>'assets/images/courses/app-development.svg','private-job-preparation'=>'assets/images/courses/private-job-preparation.svg',
+        'toefl'=>'assets/images/courses/toefl.svg','ielts'=>'assets/images/courses/ielts.svg',
+        'government-job-preparation'=>'assets/images/courses/government-job-preparation.svg','dmlt'=>'assets/images/courses/dmlt.svg',
+        'dott'=>'assets/images/courses/dott.svg','jee-neet'=>'assets/images/courses/jee-neet.svg',
+    ];
+    $generic = $fallbackCourses[0];
+    $courses = [];
+    foreach ($rows as $row) {
+        if (!is_array($row) || trim((string) ($row['name'] ?? '')) === '') continue;
+        $key = skill_key((string) ($row['title'] ?? $row['name']));
+        $slug = trim((string) ($row['slug'] ?? ''));
+        $match = $defaults[$slug] ?? $defaults[$key] ?? $defaults[$aliases[$key] ?? ''] ?? $generic;
+        $fallbackImage = $slugImages[$slug] ?? $match['image'];
+        $adminImage = filter_var((string) ($row['thumbnail_url'] ?? ''), FILTER_VALIDATE_URL) ?: '';
+        $syllabusUrl = filter_var((string) ($row['syllabus_pdf_url'] ?? ''), FILTER_VALIDATE_URL) ?: '';
+        $courseFee = max(0, (float) ($row['course_fee'] ?? 0));
+        $videoFee = max(0, (float) ($row['recorded_video_fee'] ?? 0));
+        $materialFee = max(0, (float) ($row['material_fee'] ?? 0));
+        $courses[] = array_merge($match, [
+            'id' => max(0, (int) ($row['id'] ?? 0)),
+            'slug' => $slug,
+            'title' => trim((string) ($row['title'] ?? $row['name'])),
+            'cat' => trim((string) ($row['category'] ?? '')) ?: $match['cat'],
+            'subtitle' => trim((string) ($row['short_description'] ?? $row['subtitle'] ?? '')),
+            'duration' => trim((string) ($row['duration'] ?? '')) ?: ((int) $match['weeks'] . ' weeks'),
+            'color' => in_array(($row['color'] ?? ''), ['red','blue','green','gold','purple'], true) ? $row['color'] : $match['color'],
+            'image' => $adminImage ?: $fallbackImage,
+            'fallbackImage' => $fallbackImage,
+            'syllabusUrl' => $syllabusUrl,
+            'courseFee' => $courseFee,
+            'videoFee' => $videoFee,
+            'materialFee' => $materialFee,
+        ]);
+    }
+    return $courses;
+}
+
+$adminCourses = admin_skill_courses($fallbackCourses);
+if ($adminCourses) $courses = $adminCourses;
+$homeCourses = array_slice($courses, 0, 6);
+$listingCourses = $adminCourses ? $courses : array_merge($courses, $courses);
 $degrees = [
     ['image'=>'https://www.eduvow.com/images/college/186_EduvowIIMTUniversity.jpeg','name'=>'Online BA','university'=>'IIMT University Meerut — CDOE','duration'=>'3 Years','fee'=>'₹27,000','tuition'=>'₹7,000 per year','examFee'=>'₹2,000 per year','registration'=>'₹2,000 one time','eligibility'=>'As per university admission rules','syllabus'=>'Economics, Hindi, English, Political Science, Sociology or Psychology'],
     ['image'=>'https://www.eduvow.com/images/college/186_EduvowIIMTUniversity.jpeg','name'=>'Online BA (JMC)','university'=>'IIMT University Meerut — CDOE','duration'=>'3 Years','fee'=>'₹33,000','tuition'=>'₹9,000 per year','examFee'=>'₹2,000 per year','registration'=>'₹2,000 one time','eligibility'=>'As per university admission rules','syllabus'=>'Journalism and Mass Communication'],
@@ -37,9 +148,9 @@ $institutes = [
 function h(string $value): string { return htmlspecialchars($value, ENT_QUOTES, 'UTF-8'); }
 function course_card(array $course, bool $duplicate = false): void { ?>
 <article class="course skill-slide-card" data-course='<?= h(json_encode($course, JSON_UNESCAPED_UNICODE)) ?>'>
-  <div class="course-art <?= h($course['color']) ?>"><img src="<?= h($course['image']) ?>" alt="<?= h($course['title']) ?> professional course thumbnail" loading="lazy"><i><?= h($course['cat']) ?></i></div>
+  <div class="course-art <?= h($course['color']) ?>"><img src="<?= h($course['image']) ?>" alt="<?= h($course['title']) ?> professional course thumbnail" loading="lazy"<?php if (!empty($course['fallbackImage'])): ?> onerror="this.onerror=null;this.src='<?= h($course['fallbackImage']) ?>'"<?php endif; ?>><i><?= h($course['cat']) ?></i></div>
   <div class="course-body"><div class="rating"><i data-lucide="star"></i> <?= h($course['rating']) ?> <span>(<?= (int)$course['students'] ?>)</span></div>
-  <h3><?= h($course['title']) ?></h3><div class="meta"><span><i data-lucide="clock-3"></i><?= (int)$course['weeks'] ?> weeks</span><span><i data-lucide="video"></i>Live + Video</span></div>
+  <h3><?= h($course['title']) ?></h3><div class="meta"><span><i data-lucide="clock-3"></i><?= h((string) ($course['duration'] ?? ((int)$course['weeks'] . ' weeks'))) ?></span><span><i data-lucide="video"></i>Live + Video</span></div>
   <div class="price"><span>Starting from <b>₹299</b></span><button class="open-course">Know more <i data-lucide="arrow-right"></i></button></div></div>
 </article><?php }
 function degree_card(array $degree): void { ?>
@@ -67,9 +178,9 @@ function institute_card(array $institute, string $button = 'Apply', bool $showCo
   <meta name="description" content="Skill training, admission guidance, online degrees, learning and CBT for Liberty students.">
   <link rel="icon" type="image/png" href="assets/images/brand/liberty-icon.png">
   <link rel="stylesheet" href="assets/css/style.css?v=20260831-13">
-  <link rel="stylesheet" href="assets/css/php-portal.css">
+  <link rel="stylesheet" href="assets/css/php-portal.css?v=<?= h($portalCssVersion) ?>">
 </head>
-<body>
+<body data-student-logged-in="<?= $studentUser ? '1' : '0' ?>">
 <main>
   <div class="topline"></div>
   <header class="public-header">
@@ -85,9 +196,13 @@ function institute_card(array $institute, string $button = 'Apply', bool $showCo
     </nav>
     <div class="header-actions"><button class="icon-btn" aria-label="Search"><i data-lucide="search"></i></button><button class="icon-btn" aria-label="Notifications"><i data-lucide="bell"></i><i></i></button>
       <a class="icon-btn whatsapp-support" href="https://wa.me/918276015376?text=Hi%2C%20I%20need%20help" target="_blank" rel="noopener noreferrer" aria-label="Chat with us on WhatsApp" title="Chat with us on WhatsApp"><svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><path fill="#25D366" d="M16.004 3C8.822 3 3 8.82 3 16c0 2.292.598 4.53 1.734 6.5L3 29l6.668-1.75A12.95 12.95 0 0 0 16.004 29C23.184 29 29 23.18 29 16S23.184 3 16.004 3Zm0 23.8a10.77 10.77 0 0 1-5.49-1.5l-.393-.234-3.957 1.038 1.055-3.858-.256-.398A10.77 10.77 0 0 1 5.204 16c0-5.956 4.844-10.8 10.8-10.8 5.954 0 10.796 4.844 10.796 10.8s-4.842 10.8-10.796 10.8Zm5.923-8.087c-.325-.163-1.923-.948-2.221-1.057-.298-.108-.515-.163-.732.163-.216.325-.84 1.057-1.03 1.273-.19.217-.38.244-.705.081-.325-.162-1.372-.505-2.613-1.61-.966-.86-1.619-1.923-1.808-2.248-.19-.325-.02-.5.143-.662.146-.145.325-.38.488-.569.162-.19.216-.325.325-.542.108-.216.054-.406-.027-.569-.081-.162-.732-1.76-1.003-2.41-.264-.634-.532-.548-.732-.558l-.623-.011c-.217 0-.57.081-.868.406-.298.325-1.138 1.111-1.138 2.71 0 1.598 1.165 3.142 1.327 3.36.163.216 2.292 3.499 5.553 4.906.776.334 1.381.534 1.853.684.779.247 1.488.212 2.048.129.625-.093 1.923-.786 2.194-1.544.271-.758.271-1.408.19-1.544-.081-.135-.298-.216-.623-.379Z"/></svg></a>
-      <div class="profile-menu-wrap"><button class="icon-btn profile-trigger" id="profileTrigger" aria-expanded="false" aria-label="Open profile menu" title="Profile"><i data-lucide="user-round"></i></button>
-        <div class="profile-dropdown" id="profileDropdown"><div class="profile-dropdown-head"><div><b>Student Account</b></div></div><button data-page="my-courses"><i data-lucide="play"></i>My Learning</button><button data-page="home"><i data-lucide="settings"></i>Account Settings</button><div class="profile-dropdown-divider"></div><button class="logout-item" id="logoutButton"><i data-lucide="log-out"></i>Logout</button></div>
+      <?php if ($studentUser): ?>
+      <div class="profile-menu-wrap"><button class="profile-trigger" id="profileTrigger" aria-expanded="false" aria-label="Open <?= h((string) $studentUser['name']) ?>'s profile menu" title="Profile"><img class="profile-avatar" src="<?= h($studentAvatar) ?>" alt=""><span><?= h((string) $studentUser['name']) ?></span><i data-lucide="chevron-down"></i></button>
+        <div class="profile-dropdown" id="profileDropdown"><div class="profile-dropdown-head"><img class="profile-dropdown-avatar" src="<?= h($studentAvatar) ?>" alt="<?= h((string) $studentUser['name']) ?>"><div><b><?= h((string) $studentUser['name']) ?></b><small>Student Account</small></div></div><button data-page="my-courses"><i data-lucide="play"></i>My Learning</button><button type="button" data-profile-settings-open><i data-lucide="settings"></i>Account Settings</button><div class="profile-dropdown-divider"></div><form class="profile-logout-form" method="post" action="/cbt/logout"><input type="hidden" name="_csrf" value="<?= h($_SESSION['_csrf']) ?>"><input type="hidden" name="return" value="/"><button class="logout-item" type="submit"><i data-lucide="log-out"></i>Logout</button></form></div>
       </div>
+      <?php else: ?>
+      <button class="student-avatar-login" type="button" data-home-login-open aria-label="Student login" title="Student login"><img src="/assets/images/brand/default-student-avatar.webp" alt=""></button>
+      <?php endif; ?>
     </div>
   </header>
 
@@ -104,14 +219,14 @@ function institute_card(array $institute, string $button = 'Apply', bool $showCo
     </div></section>
     <section class="content"><div class="quick-grid"><article class="quick"><div class="qicon red"><i data-lucide="book-open"></i></div><div><strong>04</strong><span>Enrolled courses</span></div><i data-lucide="arrow-right"></i></article><article class="quick"><div class="qicon blue"><i data-lucide="clock-3"></i></div><div><strong>18h</strong><span>Learning time</span></div><i data-lucide="arrow-right"></i></article><article class="quick"><div class="qicon gold"><i data-lucide="calendar-days"></i></div><div><strong>02</strong><span>Upcoming classes</span></div><i data-lucide="arrow-right"></i></article><article class="quick"><div class="qicon green"><i data-lucide="star"></i></div><div><strong>03</strong><span>Certificates</span></div><i data-lucide="arrow-right"></i></article></div>
       <div class="section-head"><div><span class="eyebrow">BUILD YOUR FUTURE</span><h2>Popular skill trainings</h2></div><button class="view-all-institutes" data-page="skill-training">View all courses <i data-lucide="arrow-right"></i></button></div>
-      <div class="course-slider-window"><div class="course-grid animated-course-group" id="homeCourseGrid"><?php foreach ($courses as $course) course_card($course); ?></div></div>
+      <div class="course-slider-window"><div class="course-grid animated-course-group" id="homeCourseGrid"><?php foreach ($homeCourses as $course) course_card($course); ?></div></div>
       <section class="home-degrees"><div class="section-head degree-section-head"><div><span class="eyebrow">STUDY FROM ANYWHERE</span><h2>Online Degree Programmes</h2></div><button class="view-all-degrees" data-page="online-degree">View All Courses <i data-lucide="arrow-right"></i></button></div><div class="degree-marquee"><div class="degree-marquee-track"><?php foreach (array_merge($degrees,$degrees) as $degree) degree_card($degree); ?></div></div></section>
       <section class="associate-section"><div class="section-head"><div><span class="eyebrow">ADMISSION · COLLEGE AND CAREER</span><h2>Our Associate Institute / College / University</h2></div><button class="view-all-institutes" data-page="admission">View All Institutes <i data-lucide="arrow-right"></i></button></div><div class="associate-grid animated-institute-grid" id="homeInstituteGrid"><?php foreach ($institutes as $institute) institute_card($institute); ?></div></section>
       <section class="home-cbt-trending" data-cbt-trending data-endpoint="/cbt/api/public/trending" data-base=""><div class="section-head"><div><span class="eyebrow">POPULAR THIS WEEK</span><h2>Trending CBT Tests</h2><p>Popular mock tests selected from current student enrollments.</p></div><a class="view-all-cbt" href="/cbt">View All Tests <i data-lucide="arrow-right"></i></a></div><div class="home-cbt-grid" data-cbt-grid aria-live="polite"><article class="home-cbt-loading"><i data-lucide="loader-circle"></i><span>Loading trending tests...</span></article></div><p class="home-cbt-unavailable" data-cbt-unavailable hidden>Trending tests are temporarily unavailable. <a href="/cbt">View all CBT tests</a></p></section>
     </section>
   </section>
 
-  <section class="portal-page page content hidden-page" id="page-skill-training"><div class="page-title"><span class="eyebrow">SKILL TRAINING</span><h1>Choose a skill. Build your career.</h1><p>Learn from industry experts with videos, downloadable materials and interactive live classes.</p></div><div class="filterbar"><label><i data-lucide="search"></i><input id="courseSearch" placeholder="Search courses..."></label><label class="filter-select"><span>Category</span><select id="courseCategoryFilter" aria-label="Filter courses by category"><option value="all">All categories</option><option value="Technology">Technology</option><option value="Development">Development</option><option value="Finance">Finance</option><option value="Marketing">Marketing</option><option value="Creative">Creative</option></select><i data-lucide="chevron-down"></i></label><label class="filter-select"><span>Sort</span><select id="courseSort" aria-label="Sort courses"><option value="popular">Most popular</option><option value="rating">Highest rated</option><option value="title-asc">Title A–Z</option><option value="title-desc">Title Z–A</option></select><i data-lucide="chevron-down"></i></label></div><div class="course-grid" id="allCourses"><?php foreach (array_merge($courses,$courses) as $course) course_card($course); ?></div></section>
+  <section class="portal-page page content hidden-page" id="page-skill-training"><div class="page-title"><span class="eyebrow">SKILL TRAINING</span><h1>Choose a skill. Build your career.</h1><p>Learn from industry experts with videos, downloadable materials and interactive live classes.</p></div><div class="filterbar"><label><i data-lucide="search"></i><input id="courseSearch" placeholder="Search courses..."></label><label class="filter-select"><span>Category</span><select id="courseCategoryFilter" aria-label="Filter courses by category"><option value="all">All categories</option><option value="Technology">Technology</option><option value="Development">Development</option><option value="Finance">Finance</option><option value="Marketing">Marketing</option><option value="Creative">Creative</option><option value="Career">Career</option><option value="Language">Language</option><option value="Competitive Exams">Competitive Exams</option><option value="Healthcare">Healthcare</option></select><i data-lucide="chevron-down"></i></label><label class="filter-select"><span>Sort</span><select id="courseSort" aria-label="Sort courses"><option value="popular">Most popular</option><option value="rating">Highest rated</option><option value="title-asc">Title A–Z</option><option value="title-desc">Title Z–A</option></select><i data-lucide="chevron-down"></i></label></div><div class="course-grid" id="allCourses"><?php foreach ($listingCourses as $course) course_card($course); ?></div></section>
 
   <section class="portal-page page content hidden-page online-degree-page" id="page-online-degree"><div class="page-title"><span class="eyebrow">ONLINE DEGREE</span><h1>Recognised degrees, flexible learning.</h1><p>Compare all online degree programmes, universities, fees and duration in one place.</p></div><div class="home-degree-grid online-degree-all-grid"><?php foreach ($degrees as $degree) degree_card($degree); ?></div></section>
 
@@ -134,7 +249,12 @@ function institute_card(array $institute, string $button = 'Apply', bool $showCo
 
   <footer class="site-footer"><div class="footer-main"><div class="footer-brand"><img src="assets/images/brand/liberty-class-career-logo.jpg" alt="Liberty Class and Career"><div class="powered-by-brand"><span>Powered by</span><img src="assets/images/brand/liberty-foundation-powered-by.jpg" alt="Liberty Foundation — Since 2008"></div><p>Learn today. Lead tomorrow. Skill training, admission guidance and online learning—all in one place.</p></div><div class="footer-links"><h3>Quick Links</h3><button data-page="home">Home</button><button data-page="skill-training">Skill Training</button><button data-page="admission">Admission</button><button data-page="online-degree">Online Degree</button></div><div class="footer-links"><h3>Student Support</h3><button data-page="my-courses">Your Learning</button><a class="external-cbt" href="/cbt" target="_blank" rel="noopener noreferrer">CBT</a><button class="open-contact">Contact Us</button><span>libertyfoundation4news@gmail.com</span></div><div class="footer-app" id="download-app"><div><span>GET THE APP</span><h3>Liberty Class and Career</h3><p>Scan the QR code or use the button to download the student app.</p></div><div class="app-download-row"><img src="assets/images/brand/liberty-app-qr.jpg" alt="App QR"><a href="https://liberty-class-career-ui.libertyfoundation4ne.chatgpt.site/?download=app"><i data-lucide="download"></i><span><small>DOWNLOAD THE</small>Liberty App</span></a></div></div></div><div class="footer-bottom"><span>© 2026 Liberty Class and Career. All rights reserved.</span><span>Since 2008 · Your Door to Future Success</span></div></footer>
 
-  <div class="overlay app-modal" id="courseModal" hidden><div class="modal"><button class="close close-modal"><i data-lucide="x"></i></button><div class="modal-art blue" id="courseArt"><span id="courseIcon">AI</span><small>6 month programme</small></div><div class="modal-body"><span class="eyebrow" id="courseCategory"></span><h2 id="courseTitle"></h2><p>Practical lessons, real projects and guided support designed to make you job-ready.</p><h4>Choose your access</h4><div class="plans" id="plans"><button data-plan="Videos only" data-amount="₹399"><i></i><span>Videos only</span><b>₹399</b></button><button data-plan="Materials only" data-amount="₹299"><i></i><span>Materials only</span><b>₹299</b></button><button class="selected" data-plan="Live Class (Full Bundle)" data-amount="₹5,500"><i><i data-lucide="check"></i></i><span>Live Class (Full Bundle)<small>MOST POPULAR</small></span><b>₹5,500</b></button></div><p class="form-error" id="enrollError" hidden></p><button class="primary full" id="enrollButton">Enroll now · ₹5,500 <i data-lucide="arrow-right"></i></button></div></div></div>
+  <?php if ($studentUser): ?><div class="overlay app-modal profile-settings-overlay" id="profileSettingsModal" hidden><div class="profile-settings-modal"><button class="close close-modal" type="button" aria-label="Close profile settings"><i data-lucide="x"></i></button><img class="profile-settings-avatar" src="<?= h($studentAvatar) ?>" alt="<?= h((string) $studentUser['name']) ?>" data-profile-settings-preview><span class="eyebrow">ACCOUNT SETTINGS</span><h2>Profile image</h2><p>Upload a JPG or PNG image. Maximum size 10 MB.</p><form action="/cbt/profile-photo" method="post" enctype="multipart/form-data" data-home-profile-form><input type="hidden" name="_csrf" value="<?= h($_SESSION['_csrf']) ?>"><input type="hidden" name="return" value="/"><label class="profile-settings-picker"><span>Choose profile image</span><input type="file" name="photo" accept=".jpeg,.jpg,.png,image/jpeg,image/png" required data-home-profile-input></label><div class="profile-settings-actions"><button class="secondary" type="submit" name="remove_photo" value="1" formnovalidate>Remove image</button><button class="primary" type="submit">Upload image</button></div></form></div></div><?php endif; ?>
+
+  <?php if (!$studentUser): ?><div class="overlay app-modal home-login-overlay" id="homeLoginModal" hidden><div class="home-login-modal"><button class="close close-modal" type="button" aria-label="Close login"><i data-lucide="x"></i></button><img src="/assets/images/brand/default-student-avatar.webp" alt=""><span class="eyebrow">STUDENT ACCOUNT</span><h2>Welcome back</h2><p>Login to access your learning and CBT account.</p><?php if ($homeLoginError): ?><p class="home-login-error" role="alert"><?= h((string) $homeLoginError) ?></p><?php endif; ?><form action="/cbt/login" method="post"><input type="hidden" name="_csrf" value="<?= h($_SESSION['_csrf']) ?>"><input type="hidden" name="return" value="/"><input type="hidden" name="login_context" value="home"><label>Email or phone<input name="identity" required autocomplete="username" value="<?= h((string) ($_SESSION['_old']['identity'] ?? '')) ?>" placeholder="Enter email or phone"></label><label>Password<input name="password" type="password" required autocomplete="current-password" placeholder="Enter password"></label><label class="home-login-remember"><input type="checkbox" name="remember" value="1"><span>Remember me</span></label><button class="primary full" type="submit">Login</button></form></div></div><?php unset($_SESSION['_old']['identity']); endif; ?>
+
+  <div class="overlay app-modal" id="courseModal" hidden><div class="modal"><button class="close close-modal"><i data-lucide="x"></i></button><div class="modal-art blue" id="courseArt"><img id="courseModalThumbnail" src="assets/images/courses/ai-machine-learning.svg" alt=""><small>6 month programme</small></div><div class="modal-body"><span class="eyebrow" id="courseCategory"></span><h2 id="courseTitle"></h2><p>Practical lessons, real projects and guided support designed to make you job-ready.</p><h4>Choose your access</h4><div class="plans" id="plans"><button data-access-type="video" data-plan="Videos only" data-amount="₹399"><i></i><span>Videos only</span><b>₹399</b></button><button data-access-type="material" data-plan="Materials only" data-amount="₹299"><i></i><span>Materials only</span><b>₹299</b></button><button class="selected" data-access-type="full_bundle" data-plan="Live Class (Full Bundle)" data-amount="₹1,200"><i><i data-lucide="check"></i></i><span>Live Class (Full Bundle)<small>MOST POPULAR</small></span><b>₹1,200</b></button></div><p class="form-error" id="enrollError" hidden></p><button class="primary full" id="enrollButton">Enroll now · ₹1,200 <i data-lucide="arrow-right"></i></button><a class="secondary full" id="courseSyllabus" target="_blank" rel="noopener" hidden>View / Download Syllabus <i data-lucide="download"></i></a></div></div></div>
+  <div class="overlay app-modal call-modal-overlay" id="skillLeadModal" hidden><div class="call-back-modal"><button class="close close-modal"><i data-lucide="x"></i></button><div class="form-state"><span class="eyebrow">SKILL TRAINING</span><h2>Complete your interest</h2><p class="call-context"><b id="skillLeadCourse"></b><span id="skillLeadPlan"></span></p><form id="skillLeadForm" class="call-request-form"><label><span>Student Name <b>*</b></span><input name="studentName" required maxlength="120" value="<?=h((string)($studentUser['name']??''))?>" placeholder="Enter student name"></label><label><span>Phone Number <b>*</b></span><input name="phone" required inputmode="tel" maxlength="20" value="<?=h($studentPhone)?>" placeholder="Enter phone number"></label><p class="form-error" hidden></p><button class="primary">Continue to WhatsApp <i data-lucide="arrow-right"></i></button></form></div><div class="success-state" role="status" aria-live="polite" hidden><div class="call-success"><i data-lucide="check"></i><div><b>Interest saved successfully!</b><span>Opening WhatsApp with your details…</span></div></div></div></div></div>
 
   <div class="overlay app-modal degree-detail-overlay" id="degreeModal" hidden><div class="degree-detail-modal"><button class="close close-modal"><i data-lucide="x"></i></button><div class="degree-modal-icon"><i data-lucide="graduation-cap"></i></div><span class="eyebrow">ONLINE DEGREE PROGRAMME</span><h2 id="degreeTitle"></h2><p class="degree-university-name" id="degreeUniversity"></p><div class="degree-written-details" id="degreeDetails"></div><div class="syllabus-box" id="syllabusBox" hidden><b>Programme Syllabus</b><p id="degreeSyllabus"></p></div><div class="degree-modal-actions"><button class="secondary" id="syllabusButton">View Syllabus</button><button class="primary open-contact">Apply Now <i data-lucide="arrow-right"></i></button></div></div></div>
 
@@ -145,6 +265,6 @@ function institute_card(array $institute, string $button = 'Apply', bool $showCo
   <div class="overlay app-modal contact-overlay" id="contactModal" hidden><div class="contact-modal"><button class="close close-modal"><i data-lucide="x"></i></button><div class="form-state"><div class="contact-title"><span class="eyebrow">GET IN TOUCH</span><h2>How can we help you?</h2><p>Complete the form and our student counsellor will contact you.</p></div><form class="contact-form" id="contactForm"><div class="two"><label>Student Name <b>*</b><input name="studentName" required placeholder="Enter student name"></label><label>Mobile Number <b>*</b><input name="phone" required inputmode="tel" placeholder="Enter mobile number"></label></div><label>Email ID <b>*</b><input name="email" required type="email" placeholder="Enter email address"></label><label>Address<input name="address" placeholder="Enter address"></label><div class="two"><label>Class / Diploma / Degree<input name="qualification" placeholder="If any"></label><label>College / University / Institute<input name="institute" placeholder="If any"></label></div><label>Interested In <b>*</b><select name="interestedIn" required><option value="">Select an option</option><option>Skills Training</option><option>College and Career</option><option>Online Learning</option></select></label><label>Tell us more<textarea name="message" placeholder="Tell us how we can help..."></textarea></label><p class="form-error" hidden></p><button class="primary full">Submit Details <i data-lucide="arrow-right"></i></button></form></div><div class="contact-success success-state" hidden><i data-lucide="check"></i><h2>Thank you!</h2><p>Your details have been submitted successfully. Our team will contact you shortly.</p><button class="primary close-modal">Done</button></div></div></div>
 </main>
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
-<script src="assets/js/app.js?v=20260917-1"></script>
+<script src="assets/js/app.js?v=<?= h($portalJsVersion) ?>"></script>
 </body>
 </html>

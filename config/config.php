@@ -1,8 +1,8 @@
 <?php
 return [
-    'db_host' => 'localhost',
+    'db_host' => '127.0.0.1',
     'db_port' => '3306',
-    'db_name' => 'YOUR_CPANEL_DATABASE_NAME',
-    'db_user' => 'YOUR_CPANEL_DATABASE_USER',
-    'db_pass' => 'YOUR_DATABASE_PASSWORD',
+    'db_name' => 'lcc_portal',
+    'db_user' => 'root',
+    'db_pass' => '',
 ];

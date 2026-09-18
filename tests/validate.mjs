@@ -36,6 +36,31 @@ test('includes working skill category and sort controls', async () => {
   assert.match(js, /courseSort.*addEventListener\('change'/s);
 });
 
+test('loads published Admin skills while retaining built-in card and image fallbacks', async () => {
+  const index = await read('index.php');
+  const exampleEnv = await read('.env.example');
+  assert.match(index, /LCC_ADMIN_API_BASE_URL/);
+  assert.match(index, /public_skills\.php/);
+  assert.match(index, /if \(\$adminCourses\) \$courses = \$adminCourses/);
+  assert.match(index, /fallbackImage/);
+  assert.match(index, /onerror="this\.onerror=null/);
+  assert.match(index, /syllabus_pdf_url/);
+  assert.match(index, /id="courseSyllabus"/);
+  assert.match(index, /id="skillLeadModal"/);
+  assert.match(index, /material_fee/);
+  for (const slug of ['ai-machine-learning','share-trading','content-creation','digital-marketing','app-web-development']) assert.ok(index.includes(`'${slug}'`));
+  assert.match(exampleEnv, /LCC_ADMIN_API_BASE_URL=http:\/\/localhost:8001\/api/);
+});
+
+test('includes relevant fallback thumbnails for all 12 Skill Training courses', async () => {
+  const index = await read('index.php');
+  const assets = ['ai-machine-learning','share-trading','content-creation','digital-marketing','app-development','private-job-preparation','toefl','ielts','government-job-preparation','dmlt','dott','jee-neet'];
+  for (const asset of assets) {
+    assert.ok(index.includes(`assets/images/courses/${asset}.svg`));
+    await access(new URL(`assets/images/courses/${asset}.svg`, root));
+  }
+});
+
 test('contains all student pages and modal flows', async () => {
   const index = await read('index.php');
   for (const id of ['page-home','page-skill-training','page-online-degree','page-admission','page-my-courses','page-cbt','courseModal','degreeModal','instituteModal','callModal','contactModal']) assert.match(index, new RegExp(`id="${id}"`));

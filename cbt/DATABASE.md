@@ -14,6 +14,7 @@ Canonical install: `database/schema.sql`; production history: `database/migratio
 | `subjects`, `topics` | catalogue taxonomy | unique slug/topic per subject |
 | `tests` | exam/category/thumbnail/schedule/fee/marks/status | end > start; catalogue index; subject/admin FKs |
 | `questions`, `question_options` | ordered content/answers | unique position and A-D key |
+| `cbt_import_sources` | idempotent DOCX import provenance | one stable source key and one source row per imported test |
 | `enrollments`, `payments` | access/commerce | unique student-test/order/payment |
 | `attempts` | timer/state/result | server deadline + owner |
 | `attempt_responses`, `response_options` | saved answers | unique attempt-question/selection |
@@ -39,6 +40,10 @@ Statuses: student `active|blocked`; test `draft|published|archived`; enrollment 
 Migration `004_subject_catalogue.sql` safely adds common science, competitive-exam and nursing subjects with `INSERT IGNORE`.
 
 Migration `003_test_thumbnails.sql` adds nullable `tests.thumbnail_path` for private WebP thumbnails.
+
+Competitive DOCX comprehension content is stored directly in `questions.question_text` as `[COMPREHENSION PASSAGE]`, the complete source passage, `[QUESTION]`, and the individual question. The existing `TEXT` capacity is sufficient for the inspected source maximum (10,385 bytes), so no question-column conversion is required.
+
+Admin CBT migration `011_competitive_mcq_content.sql` is the portable baseline for the validated competitive catalogue: 33 tests, 970 questions and 3,880 options. Running the normal CBT migrations on a fresh machine installs this dataset without rerunning the DOCX importer.
 
 Migration `002_catalogue_and_remember_tokens.sql` adds `tests.exam_name`, `tests.category`, the catalogue index and hashed persistent-login tokens.
 

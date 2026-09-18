@@ -1,7 +1,14 @@
 <?php
 declare(strict_types=1);
 
-session_start();
+require_once dirname(__DIR__) . '/cbt/vendor/autoload.php';
+if (class_exists(Dotenv\Dotenv::class) && is_file(dirname(__DIR__) . '/.env')) {
+    Dotenv\Dotenv::createImmutable(dirname(__DIR__))->safeLoad();
+}
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_name($_ENV['SESSION_NAME'] ?? 'lcc_student_session');
+    session_start();
+}
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: no-store');

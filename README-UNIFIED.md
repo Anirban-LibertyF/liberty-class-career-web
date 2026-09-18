@@ -27,6 +27,6 @@ The package intentionally uses one origin with root-relative routes. A virtual h
 
 ## External admin API
 
-Send `POST /cbt/api/admin/tests/sync` as JSON. Required top-level fields are `external_id`, `title`, `exam_name`, `category`, `subject`, `full_marks`, `duration_minutes`, `correct_mark`, `starts_at`, `ends_at`, `fee`, `status`, and `questions`. Each question supports `type`, `text`, `correct_mark`, `negative_mark`, `accepted_text`, `numeric_tolerance`, and `options`. Each option supports `key`, `text`, and `is_correct`.
+Send `POST /cbt/api/admin/tests/sync` as JSON. Required top-level fields are `external_id`, `title`, `exam_name`, `category`, `subject`, `full_marks`, `duration_minutes`, `correct_mark`, `starts_at`, `ends_at`, `fee`, `status`, and `questions`. Each question supports `type`, `text`, `correct_mark`, `negative_mark`, `accepted_text`, `numeric_tolerance`, and `options`. Each option supports `key`, `text`, and `is_correct`. The optional `thumbnail` field accepts a JPEG, PNG or WebP data URL; omit it to preserve the current thumbnail or send `null` to remove it.
 
 The sync is transactional. It updates the test and replaces its question set only when no student attempt exists. Once attempts exist, question replacement returns HTTP 409 to protect historical results.

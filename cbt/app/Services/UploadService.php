@@ -36,12 +36,10 @@ final class UploadService
         $width = imagesx($src);
         $height = imagesy($src);
         if ($width < 1 || $height < 1) {
-            imagedestroy($src);
             throw new HttpException(422, 'Invalid image dimensions.');
         }
 
         $encoded = $this->optimizedWebp($src, $width, $height);
-        imagedestroy($src);
         if ($encoded === null) {
             throw new HttpException(422, 'Image could not be compressed below 1 MB.');
         }
@@ -55,6 +53,33 @@ final class UploadService
             throw new HttpException(500, 'Image could not be stored.');
         }
         return $folder . '/' . $name;
+    }
+
+    public function dataImage(string $dataUrl, string $folder): string
+    {
+        if (!preg_match('#^data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$#', $dataUrl, $matches)) {
+            throw new HttpException(422, 'Thumbnail must be a JPEG, PNG or WebP data URL.');
+        }
+        if (strlen($matches[2]) > (self::INPUT_MAX_BYTES * 4 / 3) + 8) {
+            throw new HttpException(422, 'Image must be 10 MB or smaller.');
+        }
+        $bytes = base64_decode($matches[2], true);
+        if ($bytes === false || strlen($bytes) > self::INPUT_MAX_BYTES) {
+            throw new HttpException(422, 'Invalid thumbnail image data.');
+        }
+        $temporary = tempnam(sys_get_temp_dir(), 'lcc-image-');
+        if ($temporary === false || file_put_contents($temporary, $bytes, LOCK_EX) === false) {
+            throw new HttpException(500, 'Thumbnail could not be processed.');
+        }
+        try {
+            return $this->image([
+                'error' => UPLOAD_ERR_OK,
+                'size' => strlen($bytes),
+                'tmp_name' => $temporary,
+            ], $folder);
+        } finally {
+            @unlink($temporary);
+        }
     }
 
     public function delete(string $relativePath): void
@@ -81,7 +106,6 @@ final class UploadService
             ob_start();
             imagewebp($dst, null, max(70, 90 - ($pass * 2)));
             $data = (string) ob_get_clean();
-            imagedestroy($dst);
             if ($data !== '' && strlen($data) <= self::OUTPUT_MAX_BYTES) {
                 return $data;
             }

@@ -2,7 +2,7 @@
 
 ## External admin bridge
 
-`GET /cbt/api/admin/health` and `POST /cbt/api/admin/tests/sync` require `Authorization: Bearer <CBT_ADMIN_API_TOKEN>`. Sync upserts by `external_id` and transactionally replaces questions/options. A test with attempts returns 409. All student/public routes use `/cbt`; former `/admin*` routes are absent.
+`GET /cbt/api/admin/health` and `POST /cbt/api/admin/tests/sync` require `Authorization: Bearer <CBT_ADMIN_API_TOKEN>`. Sync upserts by `external_id` and transactionally replaces questions/options. Its optional `thumbnail` property accepts a JPEG, PNG or WebP data URL, is converted to a randomized WebP, and may be set to `null` to remove the current thumbnail; omitting it preserves the current image. A test with attempts returns 409. All student/public routes use `/cbt`; former `/admin*` routes are absent.
 
 ## Profile and test-thumbnail removal
 Admin/student profile upload endpoints accept CSRF-protected `remove_photo=1` to clear and unlink the current profile image. `POST /admin/tests/{id}/thumbnail/remove` is admin-only and CSRF-protected; it clears and unlinks the stored test thumbnail.

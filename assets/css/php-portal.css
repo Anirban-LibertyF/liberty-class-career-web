@@ -9,6 +9,41 @@
 .modal-open { overflow: hidden; }
 .public-header { z-index: 100; }
 .profile-dropdown { z-index: 120; }
+.profile-trigger {
+  color: #13213d;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  max-width: 210px;
+  padding: 4px 10px 4px 4px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+.profile-trigger > span {
+  max-width: 125px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.profile-avatar,
+.profile-dropdown-avatar {
+  object-fit: cover;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.profile-avatar { width: 34px; height: 34px; }
+.profile-trigger > svg { flex: 0 0 15px; }
+.profile-dropdown-avatar {
+  width: 42px;
+  height: 42px;
+  border: 2px solid #f1bd34;
+  box-shadow: 0 4px 12px rgba(19,33,61,.14);
+}
 .profile-dropdown.open {
   opacity: 1;
   visibility: visible;
@@ -17,6 +52,8 @@
 
 .course-slider-window .skill-slide-card.slide-hidden { display: none; }
 .app-modal .form-error { margin: 4px 0; color: #d6232b; font-size: 12px; font-weight: 700; }
+.call-request-form label > span { display: inline; line-height: 1.3; }
+.call-request-form label > span b { display: inline; margin-left: 2px; }
 .success-state[hidden], .form-state[hidden] { display: none !important; }
 .offered-courses button { cursor: pointer; }
 .hero-slide { cursor: pointer; text-decoration: none; }
@@ -29,9 +66,177 @@
 .public-header .services-trigger svg:last-child,
 .profile-trigger svg:last-child { width: 15px; height: 15px; }
 .icon-btn svg { width: 19px; height: 19px; }
-.profile-dropdown > button svg { width: 16px; height: 16px; }
-.profile-dropdown > button.logout-item svg { width: 17px; height: 17px; }
+.profile-dropdown > button svg,
+.profile-dropdown .profile-menu-link svg,
+.profile-dropdown .profile-logout-form button svg { width: 16px; height: 16px; }
+.profile-dropdown .profile-logout-form button.logout-item svg { width: 17px; height: 17px; }
+.profile-dropdown .profile-menu-link,
+.profile-dropdown .profile-logout-form button {
+  color: #4e596a;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+}
+.profile-dropdown .profile-menu-link:hover { color: #13213d; background: #f6f7fb; }
+.profile-dropdown .profile-logout-form { margin: 0; }
+.profile-dropdown .profile-logout-form button.logout-item { color: #d6272d; }
+.profile-dropdown .profile-logout-form button.logout-item:hover { color: #b7181e; background: #fff0f0; }
+.student-login-button {
+  color: #fff;
+  background: #13213d;
+  border-radius: 10px;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  display: inline-flex;
+}
+.student-login-button:hover { background: #d6232b; }
+.student-login-button svg { width: 17px; height: 17px; }
+.student-avatar-login {
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 0 0 0 2px #f1bd34, 0 6px 16px rgba(19,33,61,.18);
+}
+.student-avatar-login img { object-fit: cover; width: 100%; height: 100%; }
+.home-login-overlay { padding: 20px; }
+.home-login-modal {
+  background: #fff;
+  border-radius: 22px;
+  width: min(420px, 100%);
+  padding: 32px;
+  position: relative;
+  box-shadow: 0 30px 80px rgba(8,20,45,.35);
+}
+.home-login-modal > .close { position: absolute; top: 16px; right: 16px; }
+.home-login-modal > img { object-fit: cover; border: 3px solid #f1bd34; border-radius: 50%; width: 82px; height: 82px; margin-bottom: 17px; }
+.home-login-modal h2 { color: #13213d; margin: 7px 0; font: 700 31px Georgia, serif; }
+.home-login-modal > p { color: #6c7481; margin: 0 0 20px; font-size: 13px; }
+.home-login-modal form { gap: 14px; display: grid; }
+.home-login-modal form > label:not(.home-login-remember) { color: #13213d; gap: 7px; font-size: 12px; font-weight: 800; display: grid; }
+.home-login-modal input:not([type="checkbox"]) { border: 1px solid #dfe3ea; border-radius: 10px; width: 100%; padding: 12px 13px; outline: 0; }
+.home-login-modal input:focus { border-color: #d6232b; box-shadow: 0 0 0 3px rgba(214,35,43,.1); }
+.home-login-remember { color: #5c6574; align-items: center; gap: 8px; font-size: 12px; display: flex; }
+.home-login-remember input { accent-color: #d6232b; width: 16px; height: 16px; }
+.home-login-error { color: #a91e24 !important; background: #fff0f0; border-radius: 9px; padding: 10px 12px; font-weight: 750; }
+.profile-settings-overlay { padding: 20px; }
+.profile-settings-modal {
+  background: #fff;
+  border-radius: 22px;
+  width: min(440px, 100%);
+  padding: 32px;
+  position: relative;
+  box-shadow: 0 30px 80px rgba(8,20,45,.35);
+}
+.profile-settings-modal .close { position: absolute; top: 16px; right: 16px; }
+.profile-settings-avatar {
+  object-fit: cover;
+  border: 3px solid #f1bd34;
+  border-radius: 50%;
+  width: 96px;
+  height: 96px;
+  margin-bottom: 18px;
+  box-shadow: 0 10px 24px rgba(19,33,61,.18);
+}
+.profile-settings-modal h2 { color: #13213d; margin: 7px 0; font: 700 30px Georgia, serif; }
+.profile-settings-modal > p { color: #6c7481; margin: 0 0 20px; font-size: 13px; }
+.profile-settings-picker {
+  color: #13213d;
+  background: #fff8ea;
+  border: 1px dashed #dda93b;
+  border-radius: 12px;
+  gap: 9px;
+  padding: 16px;
+  font-size: 12px;
+  font-weight: 800;
+  display: grid;
+}
+.profile-settings-picker input { width: 100%; }
+.profile-settings-actions { justify-content: flex-end; gap: 10px; margin-top: 20px; display: flex; }
+.profile-settings-actions button { cursor: pointer; border-radius: 10px; padding: 11px 15px; font-weight: 800; }
+
+@media (max-width: 600px) {
+  .profile-trigger > span,
+  .profile-trigger > svg { display: none; }
+  .profile-trigger { width: 36px; height: 36px; padding: 0; border: 0; }
+  .profile-settings-modal { padding: 28px 20px 22px; }
+  .profile-settings-actions { flex-direction: column-reverse; }
+  .profile-settings-actions button { width: 100%; }
+}
+
+@media (max-width: 900px) {
+  .public-header .profile-trigger > span,
+  .public-header .profile-trigger > svg { display: none !important; }
+  .public-header .profile-trigger {
+    flex: 0 0 36px;
+    justify-content: center;
+    width: 36px !important;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 !important;
+    border: 0;
+    border-radius: 50%;
+  }
+  .public-header .profile-avatar { width: 36px; height: 36px; }
+  .public-header .profile-dropdown {
+    position: fixed;
+    top: 72px;
+    right: 12px !important;
+    left: 12px;
+    width: auto;
+    max-height: calc(100dvh - 84px);
+    padding: 10px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .public-header .profile-dropdown::before { right: 20px; }
+  .public-header .profile-dropdown-head { padding: 11px 10px 15px; }
+  .public-header .profile-dropdown > button,
+  .public-header .profile-dropdown .profile-menu-link,
+  .public-header .profile-dropdown .profile-logout-form button {
+    min-height: 44px;
+    padding: 12px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 430px) {
+  .public-header .profile-trigger,
+  .public-header .profile-avatar {
+    width: 33px !important;
+    min-width: 33px;
+    height: 33px;
+  }
+  .public-header .profile-dropdown {
+    top: 66px;
+    right: 8px !important;
+    left: 8px;
+    max-height: calc(100dvh - 74px);
+    border-radius: 13px;
+  }
+}
 .hero-fixed-actions .primary svg { width: 18px; height: 18px; }
+.modal-art#courseArt { padding: 0; position: relative; overflow: hidden; }
+.modal-art #courseModalThumbnail { width: 100%; height: 100%; object-fit: cover; }
+.modal-art#courseArt small { z-index: 1; background: rgba(19,33,61,.82); border-radius: 999px; padding: 6px 10px; position: absolute; bottom: 18px; }
 .hero-fixed-actions .secondary svg,
 .quick > svg { width: 17px; height: 17px; }
 .section-head button svg,

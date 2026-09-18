@@ -68,3 +68,6 @@ Use disposable DB/sandbox accounts. Never destructive-test real payment/student 
 4. Enroll sends a logged-out visitor to the single login; successful student login returns to the selected exam and starts enrollment/payment.
 5. A malicious external or protocol-relative login return path is ignored.
 6. Verify the catalogue at 360 px, 768 px and 1280 px.
+# Competitive DOCX import
+
+Run `php tests/cbt_docx_importer.php` from the Admin repository, then run the importer with `--dry-run` before `--publish`. Coverage verifies repeated passage storage, passage transitions, unrelated-question isolation, multiline preservation, escaped Admin/Student output and editor compatibility.

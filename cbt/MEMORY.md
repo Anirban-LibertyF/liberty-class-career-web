@@ -7,6 +7,7 @@
 Keep concise: verified current state, not chat history or full requirements.
 
 ## Current implementation
+- Competitive CBT DOCX imports use the existing CBT tables and store the complete relevant comprehension passage directly in every related `questions.question_text`. Admin preview and Student exam rendering preserve escaped line breaks; import provenance prevents duplicate reruns. The 33 validated tests are embedded in Admin CBT migration 011 so a fresh Windows/macOS/Linux database receives the same catalogue through the normal migration command alone.
 - Public CBT entry now opens a database-driven exam catalogue instead of the login screen. Exam/subject/filter, schedule and fee browsing requires no account; enroll/pay preserves the selected exam through login and resumes checkout for authenticated students.
 - The main Liberty dashboard consumes the public trending endpoint and shows up to four current CBT cards. Published test thumbnails are public catalogue media; profile and question media remain protected.
 - Full-stack PHP/MySQL CBT with approved logo and Liberty red/orange/yellow/off-white UI.

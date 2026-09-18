@@ -88,3 +88,6 @@ Current payment mode is `demo`; it may simulate activation for development only.
 
 - Soft-deleted tests and their enrollments/submissions do not contribute to current Admin Dashboard totals, live counts or recent activity. Historical records remain stored.
 - An in-progress exam pauses at the last server heartbeat and may resume within 30 minutes with that remaining duration restored; the scheduled test End Date/Time remains an absolute hard stop.
+# Comprehension question storage
+
+Imported passage-based questions must contain the complete relevant passage followed by the individual question in the existing question text field. The passage is repeated for every related question, remains editable in the normal Admin builder, and is escaped while preserving line breaks in Student exam output.

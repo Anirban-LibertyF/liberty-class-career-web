@@ -76,3 +76,7 @@
 - Added fee/schedule visibility before login and preserved selected-exam continuation through login into enrollment/payment.
 - Added responsive public CBT navigation and catalogue styling.
 - Added the public trending-test feed used by the main dashboard and public access for published catalogue thumbnails only.
+# 2026-09-19
+
+- Added secure, idempotent competitive CBT DOCX import support with per-question comprehension passage storage and safe multiline Admin/Student rendering.
+- Embedded the validated 33-test CBT catalogue in a portable migration so new installations do not need a separate ZIP import step.

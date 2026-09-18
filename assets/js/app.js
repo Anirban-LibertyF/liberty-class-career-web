@@ -27,6 +27,10 @@
 
   $$('[data-page]').forEach(button => button.addEventListener('click', event => {
     event.preventDefault();
+    if (button.dataset.page === 'my-courses' && document.body.dataset.studentLoggedIn !== '1') {
+      openModal($('#homeLoginModal'));
+      return;
+    }
     showPage(button.dataset.page);
   }));
   $('#menuButton')?.addEventListener('click', () => $('#mainNav')?.classList.toggle('open'));
@@ -43,8 +47,6 @@
       $('#profileTrigger [data-lucide="chevron-down"]')?.classList.remove('rotated');
     }
   });
-  $('#logoutButton')?.addEventListener('click', () => { showPage('home'); toast('Demo student session logged out.'); });
-
   const slides = $$('.hero-slide');
   const dots = $$('.hero-dots button');
   let slideIndex = 0;
@@ -101,15 +103,47 @@
   $$('.close-modal').forEach(button => button.addEventListener('click', () => closeModal(button.closest('.app-modal'))));
   $$('.app-modal').forEach(modal => modal.addEventListener('mousedown', event => { if (event.target === modal) closeModal(modal); }));
   document.addEventListener('keydown', event => { if (event.key === 'Escape') $$('.app-modal.is-open').forEach(closeModal); });
+  $('[data-profile-settings-open]')?.addEventListener('click', () => {
+    $('#profileDropdown')?.classList.remove('open');
+    $('#profileTrigger')?.setAttribute('aria-expanded', 'false');
+    openModal($('#profileSettingsModal'));
+  });
+  $('[data-home-profile-input]')?.addEventListener('change', event => {
+    const file = event.currentTarget.files?.[0];
+    const preview = $('[data-profile-settings-preview]');
+    if (file && preview) preview.src = URL.createObjectURL(file);
+  });
+  $('[data-home-login-open]')?.addEventListener('click', () => openModal($('#homeLoginModal')));
+  if (new URLSearchParams(window.location.search).get('login') === '1') openModal($('#homeLoginModal'));
 
   let currentCourse = null;
-  let selectedPlan = { name: 'Live Class (Full Bundle)', amount: '₹5,500' };
+  const feeLabel = value => Number(value) > 0 ? `₹${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : 'Free';
+  let selectedPlan = { name: 'Live Class (Full Bundle)', amount: '₹1,200', accessType: 'full_bundle' };
   $$('.open-course').forEach(button => button.addEventListener('click', () => {
     currentCourse = JSON.parse(button.closest('[data-course]').dataset.course);
     $('#courseTitle').textContent = currentCourse.title;
     $('#courseCategory').textContent = currentCourse.cat;
-    $('#courseIcon').innerHTML = currentCourse.icon;
+    const modalThumbnail = $('#courseModalThumbnail');
+    if (modalThumbnail) {
+      modalThumbnail.src = currentCourse.image;
+      modalThumbnail.alt = `${currentCourse.title} course thumbnail`;
+      modalThumbnail.onerror = () => { modalThumbnail.onerror = null; modalThumbnail.src = currentCourse.fallbackImage || currentCourse.image; };
+    }
     $('#courseArt').className = `modal-art ${currentCourse.color}`;
+    const planFees = { video: currentCourse.videoFee, material: currentCourse.materialFee, full_bundle: currentCourse.courseFee };
+    $$('#plans button').forEach(plan => {
+      const amount = feeLabel(planFees[plan.dataset.accessType]);
+      plan.dataset.amount = amount;
+      const price = $('b', plan); if (price) price.textContent = amount;
+    });
+    const activePlan = $('#plans button.selected') || $('#plans button[data-access-type="full_bundle"]');
+    selectedPlan = { name: activePlan.dataset.plan, amount: activePlan.dataset.amount, accessType: activePlan.dataset.accessType };
+    const syllabus = $('#courseSyllabus');
+    if (syllabus) {
+      syllabus.hidden = !currentCourse.syllabusUrl;
+      if (currentCourse.syllabusUrl) syllabus.href = currentCourse.syllabusUrl;
+      else syllabus.removeAttribute('href');
+    }
     $('#enrollButton').disabled = false;
     $('#enrollButton').innerHTML = `Enroll now · ${selectedPlan.amount} <i data-lucide="arrow-right"></i>`;
     $('#enrollError').hidden = true;
@@ -118,21 +152,33 @@
   $$('#plans button').forEach(button => button.addEventListener('click', () => {
     $$('#plans button').forEach(item => item.classList.remove('selected'));
     button.classList.add('selected');
-    selectedPlan = { name: button.dataset.plan, amount: button.dataset.amount };
+    selectedPlan = { name: button.dataset.plan, amount: button.dataset.amount, accessType: button.dataset.accessType };
     $('#enrollButton').innerHTML = `Enroll now · ${selectedPlan.amount} <i data-lucide="arrow-right"></i>`;
     iconRefresh();
   }));
-  $('#enrollButton')?.addEventListener('click', async () => {
-    const button = $('#enrollButton');
-    button.disabled = true; button.textContent = 'Submitting...';
+  $('#enrollButton')?.addEventListener('click', () => {
+    if (!currentCourse?.id) { toast('This course is temporarily unavailable.', true); return; }
+    $('#skillLeadCourse').textContent = currentCourse.title;
+    $('#skillLeadPlan').textContent = `${selectedPlan.name} · ${selectedPlan.amount}`;
+    resetFormModal($('#skillLeadModal'));
+    closeModal($('#courseModal'));
+    openModal($('#skillLeadModal'));
+  });
+  $('#skillLeadForm')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget, button = $('button[type="submit"], button', form), error = $('.form-error', form);
+    button.disabled = true; button.textContent = 'Saving...'; error.hidden = true;
     try {
-      const response = await api('api/enrollments.php', { studentName: 'Prosenjit Roy', courseName: currentCourse.title, accessPlan: selectedPlan.name, amount: selectedPlan.amount });
-      button.textContent = response.message;
+      const fields = Object.fromEntries(new FormData(form));
+      const response = await api('api/skill-leads.php', { ...fields, skillId: currentCourse.id, accessType: selectedPlan.accessType });
+      $('.form-state', $('#skillLeadModal')).hidden = true;
+      $('.success-state', $('#skillLeadModal')).hidden = false;
       toast(response.message);
-    } catch (error) {
-      button.disabled = false;
-      button.innerHTML = `Enroll now · ${selectedPlan.amount} <i data-lucide="arrow-right"></i>`;
-      $('#enrollError').textContent = error.message; $('#enrollError').hidden = false; iconRefresh();
+      window.setTimeout(() => { window.location.href = response.whatsapp_url; }, 1500);
+    } catch (problem) {
+      error.textContent = problem.message; error.hidden = false;
+    } finally {
+      button.disabled = false; button.innerHTML = 'Continue to WhatsApp <i data-lucide="arrow-right"></i>'; iconRefresh();
     }
   });
 
