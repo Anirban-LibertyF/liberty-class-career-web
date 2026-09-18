@@ -1,5 +1,61 @@
 # Liberty Class and Career — Student Portal
 
+## New Windows laptop or server
+
+Install the Admin repository first. Its migration runner creates both the Skill Training catalogue and the shared CBT catalogue:
+
+```powershell
+cd lcc_admin
+Copy-Item .env.example .env
+php database/migrate.php --database=all
+php tools/import_skill_syllabuses.php
+```
+
+The migration includes the 12 Skill Training courses and the validated CBT baseline of 33 tests, 970 questions and 3,880 options. It is idempotent, so rerunning it does not duplicate records. The original CBT DOCX ZIP does not need to be imported again.
+
+Create the Student environment file:
+
+```powershell
+cd ..\lcc_web
+Copy-Item .env.example .env
+```
+
+Configure the Admin connection and use exactly the same `SKILL_LEAD_API_TOKEN` in both projects:
+
+```dotenv
+APP_ENV=local
+APP_DEBUG=false
+APP_URL=http://127.0.0.1:8000
+
+LCC_ADMIN_API_BASE_URL=http://127.0.0.1:8001/api
+SKILL_LEAD_API_TOKEN=use-the-same-long-random-value-as-the-admin-project
+SKILL_LEAD_WHATSAPP_NUMBER=918276015376
+
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=lcc_cbt
+DB_USERNAME=your_database_user
+DB_PASSWORD=your_database_password
+```
+
+Start both applications in separate terminals:
+
+```powershell
+# Admin repository
+php -S 127.0.0.1:8001
+
+# Student repository
+php -S 127.0.0.1:8000 router.php
+```
+
+Open:
+
+- Student website: `http://127.0.0.1:8000/`
+- Student CBT: `http://127.0.0.1:8000/cbt`
+- Admin: `http://127.0.0.1:8001/lcc/`
+
+Admin and Student must point to the same `lcc_cbt` database. Do not import CBT data into a second Student database. Admin-uploaded runtime files must be copied with protected upload storage when moving an existing live installation; built-in fallback course thumbnails are already included in this repository.
+
 Complete Student Portal built with the requested stack:
 
 - HTML5
